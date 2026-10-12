@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  dtek-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dtek-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      # Optional: tune logging verbosity of your scraper
+      # LOG_LEVEL=DEBUG enables your log.debug() lines if you use logging.getLogger("dtek")
+      - LOG_LEVEL=INFO
+    # Playwright benefits from larger shared memory for Chromium
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
