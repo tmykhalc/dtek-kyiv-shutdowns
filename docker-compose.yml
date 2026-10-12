@@ -8,11 +8,11 @@ services:
     container_name: dtek-service
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      # Host port is configurable; the container always listens on 8081
+      - "${HOST_PORT:-8081}:8081"
     environment:
-      # Optional: tune logging verbosity of your scraper
-      # LOG_LEVEL=DEBUG enables your log.debug() lines if you use logging.getLogger("dtek")
-      - LOG_LEVEL=INFO
+      # Scraper settings: see README "Configuration" for the full list
+      - DTEK_LOG_LEVEL=${DTEK_LOG_LEVEL:-INFO}
     # Playwright benefits from larger shared memory for Chromium
     shm_size: "1gb"
     healthcheck:

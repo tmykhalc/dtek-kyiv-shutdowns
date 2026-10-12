@@ -25,8 +25,8 @@ def health():
 
 @app.get("/schedule")
 async def get_schedule(
-    street: str = Query(..., description="Street name in Ukrainian as on site"),
-    house: str = Query(..., description="House number"),
+    street: str = Query(..., description="Street as the site suggests it, e.g. 'вул. Перемоги'. A more specific name gives fewer suggestions"),
+    house: str = Query(..., description="House number, e.g. '1'"),
     headless: bool = Query(True, description="Run Chromium headless"),
     debug: bool = Query(False, description="Enable extra diagnostics")
 ):

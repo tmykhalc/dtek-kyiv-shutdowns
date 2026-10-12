@@ -1,7 +1,8 @@
 FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PORT=8081
 
 WORKDIR /app
 
@@ -21,10 +22,10 @@ COPY service.py /app/service.py
 RUN useradd -ms /bin/bash appuser && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8081
+EXPOSE ${PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
-  CMD curl -fsS http://localhost:8081/health || exit 1
+  CMD curl -fsS http://localhost:${PORT}/health || exit 1
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8081"]
+CMD ["sh", "-c", "exec uvicorn service:app --host 0.0.0.0 --port \"$PORT\""]
 

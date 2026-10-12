@@ -14,10 +14,11 @@ DTEK-KEM schedule scraper (Playwright, Python) — resilient selectors
 - --debug prints helpful diagnostics
 
 Usage:
-  python scrape_dtek_playwright.py --street "Здановської Ю" --house "85" --out dtek_out.json --headful --debug
+  python scrape_dtek_playwright.py --street "вул. Назва вулиці" --house "1" --out dtek_out.json --headful --debug
 """
 
 import json
+import os
 import sys
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -26,14 +27,29 @@ from zoneinfo import ZoneInfo
 import logging
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
+# ----------------- Configuration -----------------
+# Site-facing values come from environment variables, with the defaults below.
+
 UTC = timezone.utc
-URL = "https://www.dtek-kem.com.ua/ua/shutdowns"
-TZ_KYIV = ZoneInfo("Europe/Kyiv")
+URL = os.getenv("DTEK_URL", "https://www.dtek-kem.com.ua/ua/shutdowns")
+TZ_KYIV = ZoneInfo(os.getenv("DTEK_TIMEZONE", "Europe/Kyiv"))
+LOCALE = os.getenv("DTEK_LOCALE", "uk-UA")
+USER_AGENT = os.getenv(
+    "DTEK_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36",
+)
+NAV_TIMEOUT_MS = int(os.getenv("DTEK_NAV_TIMEOUT_MS", "45000"))
+ELEMENT_TIMEOUT_MS = int(os.getenv("DTEK_ELEMENT_TIMEOUT_MS", "8000"))
+LOG_LEVEL = os.getenv("DTEK_LOG_LEVEL", "INFO").upper()
+# --no-sandbox is required when Chromium runs inside a container
+BROWSER_ARGS = ["--no-sandbox", "--disable-blink-features=AutomationControlled"]
 
 # ----------------- Logging   ----------------
 
 logging.basicConfig(
-    level=logging.INFO,                   # or DEBUG for more verbosity
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()]   # print to stdout (FastAPI will capture it)
 )
@@ -175,7 +191,7 @@ def wait_for_form_ready(ctx, debug=False):
     last_err = None
     for sel in candidates:
         try:
-            ctx.locator(sel).first.wait_for(state="visible", timeout=8000)
+            ctx.locator(sel).first.wait_for(state="visible", timeout=ELEMENT_TIMEOUT_MS)
             if debug:
                 #print(f"[debug] street input ready via selector: {sel}")
                 log.debug(f"[debug] street input ready via selector: {sel}")
@@ -192,11 +208,11 @@ def fill_address(ctx, street: str, house: str, debug=False):
     log.info("Typing street: %s", street)
     # Click with retries (in case something overlays briefly)
     try:
-        street_el.click(timeout=8000)
+        street_el.click(timeout=ELEMENT_TIMEOUT_MS)
     except PWTimeout:
         # Try to scroll into view and force
         street_el.scroll_into_view_if_needed(timeout=2000)
-        street_el.click(timeout=8000, force=True)
+        street_el.click(timeout=ELEMENT_TIMEOUT_MS, force=True)
     street_el.fill("")
     street_el.type(street, delay=60)
 
@@ -208,7 +224,7 @@ def fill_address(ctx, street: str, house: str, debug=False):
     ]
     # Suggestions render asynchronously after typing; wait for them before counting
     with suppress(PWTimeout):
-        ctx.locator(", ".join(ac_opts)).first.wait_for(state="visible", timeout=8000)
+        ctx.locator(", ".join(ac_opts)).first.wait_for(state="visible", timeout=ELEMENT_TIMEOUT_MS)
     picked = False
     for ac in ac_opts:
         count = ctx.locator(ac).count()
@@ -245,7 +261,7 @@ def fill_address(ctx, street: str, house: str, debug=False):
     # Wait until house is enabled
     house_el = ctx.locator(house_sel).first
     house_el.scroll_into_view_if_needed(timeout=2000)
-    house_el.wait_for(state="visible", timeout=8000)
+    house_el.wait_for(state="visible", timeout=ELEMENT_TIMEOUT_MS)
     # Some pages disable until street chosen; poll 'disabled' property
     with suppress(Exception):
         ctx.wait_for_function("el => !!el && !el.disabled", arg=house_el.element_handle(), timeout=10000)
@@ -260,7 +276,7 @@ def fill_address(ctx, street: str, house: str, debug=False):
 
     # House autocomplete
     with suppress(PWTimeout):
-        ctx.locator(", ".join(ac_opts)).first.wait_for(state="visible", timeout=8000)
+        ctx.locator(", ".join(ac_opts)).first.wait_for(state="visible", timeout=ELEMENT_TIMEOUT_MS)
     picked = False
     for ac in ac_opts:
         count = ctx.locator(ac).count()
@@ -377,18 +393,16 @@ def run(street: str, house: str, out_path: str, headless: bool, debug: bool):
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=headless,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=BROWSER_ARGS,
         )
         context = browser.new_context(
-            locale="uk-UA",
-            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/122.0.0.0 Safari/537.36"),
+            locale=LOCALE,
+            user_agent=USER_AGENT,
         )
         page = context.new_page()
 
         # Navigate; allow hydration to start
-        page.goto(URL, wait_until="domcontentloaded", timeout=45000)
+        page.goto(URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
 
         # Remove overlays that may block interaction
         nuke_overlays(page, debug=debug)
@@ -504,30 +518,21 @@ def run(street: str, house: str, out_path: str, headless: bool, debug: bool):
 
 def fetch_schedule(street: str, house: str, headless: bool = True, debug: bool = False) -> dict:
     """Return the JSON payload without printing or saving."""
-    from contextlib import suppress
-    from datetime import datetime, timedelta, timezone
-    from zoneinfo import ZoneInfo
-
-    UTC = timezone.utc
-    TZ_KYIV = ZoneInfo("Europe/Kyiv")
-
     def _inner():
         nonlocal street, house, headless, debug
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=headless,
-                args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+                args=BROWSER_ARGS,
             )
             context = browser.new_context(
-                locale="uk-UA",
-                user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/122.0.0.0 Safari/537.36"),
+                locale=LOCALE,
+                user_agent=USER_AGENT,
             )
             page = context.new_page()
             
         # --- current flow (exactly as in run()) ---
-            page.goto(URL, wait_until="domcontentloaded", timeout=45000)
+            page.goto(URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
             nuke_overlays(page, debug=debug)
             ctx = find_form_context(page, debug=debug)
             with suppress(Exception):

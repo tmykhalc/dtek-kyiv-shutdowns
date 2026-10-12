@@ -2,4 +2,5 @@
 __pycache__/
 *.pyc
 .pw-chrome-profile/
+.env
 dtek_out.json
