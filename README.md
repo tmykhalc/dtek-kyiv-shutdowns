@@ -134,6 +134,12 @@ curl -X POST http://localhost:8081/schedule \
   "last_update_local": "2026-10-12T15:36:00",
   "multiple_feeders": true,
   "site_message": "…",               // text shown by the site, or null
+  "emergency": {                     // read from the "Шановні клієнти!" modal
+    "active": true,                  // notice mentions emergency shutdowns (екстрені відключення)
+    "applies": false,                // active AND names DTEK_DISTRICT (always = active if unset)
+    "district_filter": "голосіїв",
+    "text": "…"
+  },
   "raw_by_timestamp": { "1791752400": [ { "hour": 0, "status": "light_on" }, "…" ] },
   "by_date": { "2026-10-12": [ "…24 slots…" ] },
   "selected_days": ["2026-10-12"],   // days with at least one outage
@@ -159,6 +165,7 @@ Every site-facing value can be set with an environment variable. Unset variables
 | `DTEK_USER_AGENT` | Chrome 122 on Windows | Browser user agent |
 | `DTEK_NAV_TIMEOUT_MS` | `45000` | Page load timeout |
 | `DTEK_ELEMENT_TIMEOUT_MS` | `8000` | Wait for form fields and suggestions |
+| `DTEK_DISTRICT` | empty | Stem of your district as written in the site notice, e.g. `Голосіїв`. When set, `emergency.applies` is true only if the notice names it |
 | `DTEK_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `HOST_PORT` | `8081` | Port published by Docker Compose |
 

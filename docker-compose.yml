@@ -13,6 +13,7 @@ services:
     environment:
       # Scraper settings: see README "Configuration" for the full list
       - DTEK_LOG_LEVEL=${DTEK_LOG_LEVEL:-INFO}
+      - DTEK_DISTRICT=${DTEK_DISTRICT:-}
     # Playwright benefits from larger shared memory for Chromium
     shm_size: "1gb"
     healthcheck:

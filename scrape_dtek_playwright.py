@@ -43,6 +43,9 @@ USER_AGENT = os.getenv(
 NAV_TIMEOUT_MS = int(os.getenv("DTEK_NAV_TIMEOUT_MS", "45000"))
 ELEMENT_TIMEOUT_MS = int(os.getenv("DTEK_ELEMENT_TIMEOUT_MS", "8000"))
 LOG_LEVEL = os.getenv("DTEK_LOG_LEVEL", "INFO").upper()
+# Stem of your district name as written in the site notice, e.g. "Голосіїв" matches
+# "Голосіївського". When set, emergency["applies"] is true only if the notice names it.
+DISTRICT = os.getenv("DTEK_DISTRICT", "").strip().lower()
 # --no-sandbox is required when Chromium runs inside a container
 BROWSER_ARGS = ["--no-sandbox", "--disable-blink-features=AutomationControlled"]
 
@@ -118,6 +121,37 @@ def select_days_to_print(schedule_by_date: dict[str, list[dict]]) -> list[str]:
 
 def summarize_day_slots(slots: list[dict]) -> str:
     return "\n".join(f"{h['hour']:02d}–{h['hour']+1:02d}: {h['status']}" for h in slots)
+
+
+# ----------------- Emergency notice -----------------
+
+def parse_emergency(text: str | None) -> dict:
+    """Interpret the text of the 'Шановні клієнти!' modal."""
+    text = " ".join((text or "").split())
+    active = "екстрен" in text.lower()
+    applies = active and (not DISTRICT or DISTRICT in text.lower())
+    return {
+        "active": active,
+        "applies": applies,
+        "district_filter": DISTRICT or None,
+        "text": text or None,
+    }
+
+
+def read_emergency_notice(page, debug=False) -> dict:
+    """
+    Read the attention modal BEFORE nuke_overlays() removes it.
+    The modal renders after DOMContentLoaded, so wait briefly for its text.
+    No modal means no notice, i.e. no emergency.
+    """
+    text = None
+    with suppress(Exception):
+        loc = page.locator(".m-attention__text").first
+        loc.wait_for(state="attached", timeout=ELEMENT_TIMEOUT_MS)
+        text = loc.text_content()
+    emergency = parse_emergency(text)
+    log.info("Emergency notice: active=%s applies=%s", emergency["active"], emergency["applies"])
+    return emergency
 
 
 # ----------------- Page helpers -----------------
@@ -404,7 +438,8 @@ def run(street: str, house: str, out_path: str, headless: bool, debug: bool):
         # Navigate; allow hydration to start
         page.goto(URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
 
-        # Remove overlays that may block interaction
+        # Read the emergency notice, then remove overlays that may block interaction
+        emergency = read_emergency_notice(page, debug=debug)
         nuke_overlays(page, debug=debug)
 
         # Find where the form actually is (main DOM vs iframe)
@@ -498,6 +533,7 @@ def run(street: str, house: str, out_path: str, headless: bool, debug: bool):
             "last_update_local": last_update_iso,
             "multiple_feeders": multi_feeders,
             "site_message": info_message,
+            "emergency": emergency,
             "raw_by_timestamp": data,
             "by_date": by_date,
             #"selected_days": chosen_days,
@@ -533,6 +569,7 @@ def fetch_schedule(street: str, house: str, headless: bool = True, debug: bool =
             
         # --- current flow (exactly as in run()) ---
             page.goto(URL, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+            emergency = read_emergency_notice(page, debug=debug)
             nuke_overlays(page, debug=debug)
             ctx = find_form_context(page, debug=debug)
             with suppress(Exception):
@@ -577,6 +614,7 @@ def fetch_schedule(street: str, house: str, headless: bool = True, debug: bool =
                 "last_update_local": last_update_iso,
                 "multiple_feeders": multi_feeders,
                 "site_message": info_message,
+                "emergency": emergency,
                 "raw_by_timestamp": data,
                 "by_date": by_date,
                 "selected_days": filtered_days,

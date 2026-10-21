@@ -134,6 +134,12 @@ curl -X POST http://localhost:8081/schedule \
   "last_update_local": "2026-10-12T15:36:00",
   "multiple_feeders": true,
   "site_message": "…",               // текст, який показує сайт, або null
+  "emergency": {                     // зчитується з модального вікна «Шановні клієнти!»
+    "active": true,                  // в повідомленні згадано екстрені відключення
+    "applies": false,                // active І згадано DTEK_DISTRICT (без нього = active)
+    "district_filter": "голосіїв",
+    "text": "…"
+  },
   "raw_by_timestamp": { "1791752400": [ { "hour": 0, "status": "light_on" }, "…" ] },
   "by_date": { "2026-10-12": [ "…24 слоти…" ] },
   "selected_days": ["2026-10-12"],   // дні, де є хоча б одне відключення
@@ -159,6 +165,7 @@ curl -X POST http://localhost:8081/schedule \
 | `DTEK_USER_AGENT` | Chrome 122 на Windows | User agent браузера |
 | `DTEK_NAV_TIMEOUT_MS` | `45000` | Таймаут завантаження сторінки |
 | `DTEK_ELEMENT_TIMEOUT_MS` | `8000` | Очікування полів форми і підказок |
+| `DTEK_DISTRICT` | порожньо | Корінь назви вашого району, як у повідомленні на сайті, напр. `Голосіїв`. Якщо задано, `emergency.applies` істинне лише коли повідомлення згадує цей район |
 | `DTEK_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `HOST_PORT` | `8081` | Порт, який публікує Docker Compose |
 
