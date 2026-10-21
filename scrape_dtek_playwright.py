@@ -19,6 +19,7 @@ Usage:
 
 import json
 import os
+import re
 import sys
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -125,10 +126,15 @@ def summarize_day_slots(slots: list[dict]) -> str:
 
 # ----------------- Emergency notice -----------------
 
+EMERGENCY_RE = re.compile(r"\bекстрен[іе]\b", re.IGNORECASE)
+
+
 def parse_emergency(text: str | None) -> dict:
     """Interpret the text of the 'Шановні клієнти!' modal."""
     text = " ".join((text or "").split())
-    active = "екстрен" in text.lower()
+    # Nominative "екстрені/екстрене відключення" = in effect. Other forms such as
+    # "уникнути екстрених відключень" (stabilisation-outage advisory) must not match.
+    active = bool(EMERGENCY_RE.search(text))
     applies = active and (not DISTRICT or DISTRICT in text.lower())
     return {
         "active": active,
